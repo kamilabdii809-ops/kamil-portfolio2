@@ -1,0 +1,132 @@
+-- =========================================
+-- CREATE DATABASE
+-- =========================================
+CREATE DATABASE IF NOT EXISTS flight_booking;
+USE flight_booking;
+
+-- =========================================
+-- TABLES
+-- =========================================
+
+-- Passengers
+CREATE TABLE Passengers (
+    passenger_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    city VARCHAR(100)
+);
+
+-- Airlines
+CREATE TABLE Airlines (
+    airline_id INT AUTO_INCREMENT PRIMARY KEY,
+    airline_name VARCHAR(100) UNIQUE NOT NULL
+);
+
+-- Flights
+CREATE TABLE Flights (
+    flight_id INT AUTO_INCREMENT PRIMARY KEY,
+    flight_code VARCHAR(10) UNIQUE,
+    origin VARCHAR(100),
+    destination VARCHAR(100),
+    departure_time DATETIME,
+    airline_id INT,
+    FOREIGN KEY (airline_id) REFERENCES Airlines(airline_id)
+        ON DELETE CASCADE
+);
+
+-- Seats
+CREATE TABLE Seats (
+    seat_id INT AUTO_INCREMENT PRIMARY KEY,
+    flight_id INT,
+    seat_number VARCHAR(5),
+    UNIQUE (flight_id, seat_number),
+    FOREIGN KEY (flight_id) REFERENCES Flights(flight_id)
+        ON DELETE CASCADE
+);
+
+-- Bookings (BEST DESIGN)
+CREATE TABLE Bookings (
+    booking_id INT AUTO_INCREMENT PRIMARY KEY,
+    passenger_id INT,
+    flight_id INT,
+    seat_id INT UNIQUE,
+    status ENUM('Pending','Confirmed','Cancelled','Completed'),
+    booking_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (passenger_id) REFERENCES Passengers(passenger_id),
+    FOREIGN KEY (flight_id) REFERENCES Flights(flight_id),
+    FOREIGN KEY (seat_id) REFERENCES Seats(seat_id)
+);
+
+-- Payments
+CREATE TABLE Payments (
+    payment_id INT AUTO_INCREMENT PRIMARY KEY,
+    booking_id INT,
+    method VARCHAR(50),
+    status ENUM('Pending','Completed','Failed'),
+    FOREIGN KEY (booking_id) REFERENCES Bookings(booking_id)
+);
+
+-- Audit Log
+CREATE TABLE Audit_Log (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    action VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =========================================
+-- INDEXES
+-- =========================================
+CREATE INDEX idx_flight_search 
+ON Flights(origin, destination, departure_time);
+
+CREATE INDEX idx_seat_flight 
+ON Seats(flight_id);
+
+-- =========================================
+-- SAMPLE DATA
+-- =========================================
+
+INSERT INTO Passengers (name, city) VALUES
+('Abel','Addis Ababa'),
+('Sara','Adama'),
+('Dawit','Hawassa');
+
+INSERT INTO Airlines (airline_name) VALUES
+('Ethiopian Airlines'),
+('Kenya Airways');
+
+INSERT INTO Flights (flight_code, origin, destination, departure_time, airline_id) VALUES
+('ET101','Addis Ababa','Nairobi','2026-05-01 08:00:00',1),
+('KQ202','Nairobi','Addis Ababa','2026-05-02 14:00:00',2);
+
+INSERT INTO Seats (flight_id, seat_number) VALUES
+(1,'1A'),
+(1,'1B'),
+(2,'2A');
+
+-- =========================================
+-- SAFE BOOKING TRANSACTION (FINAL FIX)
+-- =========================================
+
+START TRANSACTION;
+
+-- Try to book seat ONLY if not already booked
+UPDATE Seats s
+LEFT JOIN Bookings b ON s.seat_id = b.seat_id
+SET s.seat_id = s.seat_id
+WHERE s.seat_id = 1 AND b.seat_id IS NULL;
+
+-- Check if seat is still free
+INSERT INTO Bookings (passenger_id, flight_id, seat_id, status)
+SELECT 3, 1, 1, 'Confirmed'
+WHERE NOT EXISTS (
+    SELECT 1 FROM Bookings WHERE seat_id = 1
+);
+
+COMMIT;
+
+-- =========================================
+-- SAMPLE PAYMENTS
+-- =========================================
+INSERT INTO Payments (booking_id, method, status) VALUES
+(1,'Telebirr','Completed'),
+(2,'Card','Pending');
